@@ -1,0 +1,124 @@
+# =========================
+# Python / Bytecode
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# =========================
+# Virtual environments
+# =========================
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# =========================
+# Build / Packaging
+# =========================
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.whl
+*.spec
+
+# =========================
+# Test / Coverage
+# =========================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.pyre/
+.ruff_cache/
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Logs / Runtime
+# =========================
+*.log
+logs/
+*.pid
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Windows shortcuts
+*.lnk
+
+# =========================
+# IDEs
+# =========================
+.vscode/
+.idea/
+*.iml
+
+# =========================
+# Local configs / secrets
+# =========================
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.pfx
+
+# =========================
+# Data / Outputs (ajusta según tu proyecto)
+# =========================
+data/
+outputs/
+reports/
+tmp/
+temp/
+cache/
+
+# =========================
+# spaCy / NLP caches (si los generas)
+# =========================
+.spacy/
+spacy_cache/
+
+# =========================
+# Node / frontend tooling (si en algún momento agregas)
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Frontend build outputs (si agregas bundler)
+# =========================
+dist/
+out/
+.cache/
+
+# =========================
+# SQLite / local db (si usas)
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Mac / Linux temp
+# =========================
+*.swp
+*.swo
+*~

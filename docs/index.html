@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>OFAC Social Media Monitor</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background: #0b1220; color: #e8eefc; }
+    header { padding: 18px 20px; background: linear-gradient(90deg, #0b1220, #12224a); border-bottom: 1px solid rgba(255,255,255,.08); }
+    h1 { margin: 0; font-size: 18px; letter-spacing: .2px; }
+    .sub { margin-top: 6px; font-size: 12px; opacity: .85; }
+    main { padding: 18px 20px; max-width: 1200px; margin: 0 auto; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .pill { padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.08); font-size: 12px; }
+    .btn { padding: 8px 10px; border: 1px solid rgba(255,255,255,.18); border-radius: 10px; background: rgba(255,255,255,.06); color: #e8eefc; cursor: pointer; }
+    .btn:hover { background: rgba(255,255,255,.10); }
+    .input { padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #e8eefc; min-width: 280px; }
+    .card { border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 12px 12px; background: rgba(255,255,255,.04); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: top; }
+    th { position: sticky; top: 0; background: #0b1220; z-index: 1; }
+    .tag { display:inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; margin-right: 6px; }
+    .tag-ok { background: rgba(0, 255, 179, .14); border: 1px solid rgba(0, 255, 179, .28); }
+    .tag-warn { background: rgba(255, 214, 0, .12); border: 1px solid rgba(255, 214, 0, .24); }
+    .muted { opacity: .8; }
+    a { color: #9ec1ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>OFAC Social Media Monitor</h1>
+  <div class="sub">
+    Monitorea menciones (RSS + opcional Twitter) y cruza nombres contra la lista SDN. Esto es una herramienta de apoyo: requiere verificación y due diligence.
+  </div>
+</header>
+
+<main>
+  <div class="row">
+    <span class="pill" id="pillStatus">Estado: …</span>
+    <span class="pill" id="pillOfac">OFAC: …</span>
+    <span class="pill" id="pillCount">Registros: …</span>
+    <label class="pill"><input type="checkbox" id="chkOnlyOfac"/> solo coincidencias OFAC</label>
+    <button class="btn" onclick="loadAll()">Actualizar ya</button>
+    <button class="btn" onclick="downloadExcel()">Descargar Excel</button>
+  </div>
+
+  <div class="row card">
+    <div style="flex:1">
+      <div class="muted" style="font-size:12px;margin-bottom:6px">Buscar directamente en OFAC (fuzzy)</div>
+      <input class="input" id="q" placeholder="Ej: JUAN PEREZ / SMITH" onkeydown="if(event.key==='Enter'){searchOfac()}"/>
+      <button class="btn" onclick="searchOfac()">Buscar</button>
+      <div id="ofacResults" style="margin-top:10px"></div>
+    </div>
+    <div style="flex:1">
+      <div class="muted" style="font-size:12px;margin-bottom:6px">Notas rápidas</div>
+      <div class="muted" style="font-size:12px;line-height:1.4">
+        <div>• <span class="tag tag-ok">Posible match OFAC</span> = coincidencia por nombre con score ≥ 92.</div>
+        <div>• <span class="tag tag-warn">Candidato por contexto</span> = menciona keywords pero no matchea OFAC (aún).</div>
+        <div>• Revisa siempre fuente y programa OFAC antes de tomar acciones.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="muted" style="font-size:12px;margin-bottom:8px">Stream de menciones</div>
+    <div style="overflow:auto; max-height: 65vh;">
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width:160px">Fecha</th>
+            <th style="min-width:200px">Fuente</th>
+            <th style="min-width:260px">Personas detectadas</th>
+            <th>Texto / evidencia</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+let timer = null;
+
+function esc(s){ return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+
+async function loadStatus(){
+  const r = await fetch("/api/status");
+  const j = await r.json();
+  document.getElementById("pillStatus").textContent =
+    "Estado: " + (j.last_error ? ("ERROR") : "OK") + " | last run: " + (j.last_mentions_run_utc || "—");
+  document.getElementById("pillCount").textContent = "Registros: " + (j.count ?? 0);
+  const m = j.ofac_meta || {};
+  document.getElementById("pillOfac").textContent =
+    "OFAC entries: " + (m.entries ?? "—") + " | fetched: " + (m.fetched_at_utc ?? "—");
+  if (j.last_error){
+    document.getElementById("pillStatus").title = j.last_error;
+  }
+}
+
+function render(items){
+  const tb = document.getElementById("tbody");
+  tb.innerHTML = "";
+  for (const it of items){
+    const persons = (it.persons||[]);
+    const matches = (it.ofac_matches||[]);
+    const tag = it.has_ofac_match
+      ? '<span class="tag tag-ok">Posible match OFAC</span>'
+      : '<span class="tag tag-warn">Candidato por contexto</span>';
+
+    let pHtml = "";
+    if (!persons.length){
+      pHtml = '<span class="muted">—</span>';
+    } else {
+      pHtml = persons.map(p => `<div>${esc(p)}</div>`).join("");
+    }
+
+    let mHtml = "";
+    if (matches.length){
+      mHtml = '<div class="mono muted" style="margin-top:6px">' +
+        matches.map(m => `match: ${esc(m.candidate)} ⇢ ${esc(m.ofac_name)} (score ${m.score}${m.uid ? ", uid "+m.uid : ""})`).join("<br>") +
+        "</div>";
+    }
+
+    const link = it.link ? `<div><a href="${esc(it.link)}" target="_blank" rel="noopener">Abrir fuente</a></div>` : "";
+    const pub  = it.published ? `<div class="muted">Publicado: ${esc(it.published)}</div>` : "";
+
+    tb.insertAdjacentHTML("beforeend", `
+      <tr>
+        <td>${esc(it.processed_utc || it.ts_utc || "—")}<div>${tag}</div></td>
+        <td>${esc(it.source || "—")}${link}${pub}</td>
+        <td>${pHtml}${mHtml}</td>
+        <td>${esc(it.text || "")}</td>
+      </tr>
+    `);
+  }
+}
+
+async function loadResults(){
+  const only = document.getElementById("chkOnlyOfac").checked ? 1 : 0;
+  const r = await fetch(`/api/results?only_ofac=${only}&limit=200`);
+  const j = await r.json();
+  render(j.items || []);
+}
+
+async function loadAll(){
+  await loadStatus();
+  await loadResults();
+}
+
+async function searchOfac(){
+  const q = document.getElementById("q").value.trim();
+  if (!q){ return; }
+  const r = await fetch(`/api/search_ofac?q=${encodeURIComponent(q)}&limit=10`);
+  const j = await r.json();
+  const div = document.getElementById("ofacResults");
+  const items = j.items || [];
+  if (!items.length){
+    div.innerHTML = '<div class="muted">Sin resultados.</div>';
+    return;
+  }
+  div.innerHTML = items.map(x =>
+    `<div class="mono">${esc(x.ofac_name)} <span class="muted">(score ${x.score}${x.uid? ", uid "+x.uid:""})</span></div>`
+  ).join("");
+}
+
+async function downloadExcel(){
+  const only = document.getElementById("chkOnlyOfac").checked ? 1 : 0;
+  const url = `/api/export_excel?only_ofac=${only}&limit=2000`;
+  window.location.href = url;
+}
+
+function start(){
+  loadAll();
+  if (timer) clearInterval(timer);
+  timer = setInterval(loadAll, 15000); // cada 15s UI
+}
+start();
+</script>
+
+</body>
+</html>
